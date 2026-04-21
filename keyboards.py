@@ -1,14 +1,20 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config import PRO_STARS
 
-def main_menu():
+
+def main_menu(is_pro: bool = False):
     kb = InlineKeyboardBuilder()
     kb.button(text="➖ Расход", callback_data="add:expense")
     kb.button(text="➕ Доход", callback_data="add:income")
     kb.button(text="📊 Статистика", callback_data="stats:menu")
     kb.button(text="🗂 Категории", callback_data="cats:menu")
     kb.button(text="🕘 Последние", callback_data="recent")
-    kb.adjust(2, 2, 1)
+    if not is_pro:
+        kb.button(text="⭐ Про", callback_data="pro:info")
+        kb.adjust(2, 2, 2)
+    else:
+        kb.adjust(2, 2, 1)
     return kb.as_markup()
 
 
@@ -80,4 +86,12 @@ def cats_delete_kb(categories):
 def recent_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="🏠 Меню", callback_data="menu")
+    return kb.as_markup()
+
+
+def pro_info_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"💳 Купить за {PRO_STARS} ⭐", callback_data="pro:buy")
+    kb.button(text="❌ Отмена", callback_data="menu")
+    kb.adjust(1)
     return kb.as_markup()

@@ -1,13 +1,13 @@
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 
 import database as db
 import keyboards as kb
-from config import CURRENCY
+from config import CURRENCY, PRO_STARS
 
 router = Router()
 
@@ -60,7 +60,7 @@ async def cmd_start(msg: Message, state: FSMContext):
         "Привет! Я бот для учёта расходов и доходов.\n\n"
         "Нажми кнопку, выбери тип операции, напиши <code>название сумма</code> "
         "(например <code>кофе 300</code>) и выбери категорию.",
-        reply_markup=kb.main_menu(),
+        reply_markup=kb.main_menu(is_pro=db.is_pro(msg.from_user.id)),
     )
 
 
@@ -74,7 +74,7 @@ async def cmd_help(msg: Message):
         "3. Выбери категорию из кнопок\n\n"
         "В разделе <b>🗂 Категории</b> можно добавлять и удалять свои категории.\n"
         "В разделе <b>📊 Статистика</b> — суммы по категориям за разные периоды.",
-        reply_markup=kb.main_menu(),
+        reply_markup=kb.main_menu(is_pro=db.is_pro(msg.from_user.id)),
     )
 
 
@@ -84,7 +84,7 @@ async def cb_menu(cb: CallbackQuery, state: FSMContext):
     await safe_edit(
         cb.message,
         "Главное меню. Выбери действие:",
-        reply_markup=kb.main_menu(),
+        reply_markup=kb.main_menu(is_pro=db.is_pro(cb.from_user.id)),
     )
     await cb.answer()
 
@@ -125,7 +125,7 @@ async def handle_tx_input(msg: Message, state: FSMContext):
     await state.set_state(States.waiting_category)
     cats = db.get_categories(msg.from_user.id, type_)
     label = "расход" if type_ == "expense" else "доход"
-    title = comment if comment else f"(без названия)"
+    title = comment if comment else "(без названия)"
     await msg.answer(
         f"📝 {label.capitalize()}: <b>{title}</b> — <b>{format_money(amount)} {CURRENCY}</b>\n\n"
         f"Выбери категорию:",
@@ -172,7 +172,7 @@ async def cb_undo(cb: CallbackQuery):
         await safe_edit(
             cb.message,
             "↩️ Транзакция отменена.",
-            reply_markup=kb.main_menu(),
+            reply_markup=kb.main_menu(is_pro=db.is_pro(cb.from_user.id)),
         )
         await cb.answer("Удалено")
     else:
@@ -327,7 +327,7 @@ async def handle_new_category(msg: Message, state: FSMContext):
     label = "расходов" if type_ == "expense" else "доходов"
     await msg.answer(
         f"✅ Категория <b>{emoji} {name}</b> добавлена в {label}.",
-        reply_markup=kb.main_menu(),
+        reply_markup=kb.main_menu(is_pro=db.is_pro(msg.from_user.id)),
     )
 
 
@@ -370,11 +370,59 @@ async def cb_cat_delete(cb: CallbackQuery):
         )
 
 
+# ---------- Pro ----------
+
+@router.callback_query(F.data == "pro:info")
+async def cb_pro_info(cb: CallbackQuery):
+    if db.is_pro(cb.from_user.id):
+        await cb.answer()
+        return
+    await safe_edit(
+        cb.message,
+        f"⭐ <b>Поддержать разработку</b>\n\n"
+        f"Одноразовый платёж — <b>{PRO_STARS} звёзд Telegram</b>.",
+        reply_markup=kb.pro_info_kb(),
+    )
+    await cb.answer()
+
+
+@router.callback_query(F.data == "pro:buy")
+async def cb_pro_buy(cb: CallbackQuery, bot: Bot):
+    if db.is_pro(cb.from_user.id):
+        await cb.answer()
+        return
+    await bot.send_invoice(
+        chat_id=cb.from_user.id,
+        title="⭐ Поддержать разработку",
+        description=f"Одноразовый платёж — {PRO_STARS} звёзд Telegram",
+        payload="pro_purchase",
+        currency="XTR",
+        prices=[LabeledPrice(label="Поддержать", amount=PRO_STARS)],
+        provider_token="",
+    )
+    await cb.answer()
+
+
+@router.pre_checkout_query()
+async def pre_checkout_handler(pq: PreCheckoutQuery):
+    await pq.answer(ok=True)
+
+
+@router.message(F.successful_payment)
+async def handle_successful_payment(msg: Message):
+    if msg.successful_payment.invoice_payload == "pro_purchase":
+        db.add_pro_user(msg.from_user.id)
+        await msg.answer(
+            "✅ Спасибо!",
+            reply_markup=kb.main_menu(is_pro=True),
+        )
+
+
 # ---------- Fallback ----------
 
 @router.message()
 async def fallback(msg: Message):
     await msg.answer(
         "Нажми кнопку <b>➖ Расход</b> или <b>➕ Доход</b>, чтобы начать.",
-        reply_markup=kb.main_menu(),
+        reply_markup=kb.main_menu(is_pro=db.is_pro(msg.from_user.id)),
     )

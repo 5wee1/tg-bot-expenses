@@ -68,6 +68,12 @@ def init_db():
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS pro_users (
+                user_id INTEGER PRIMARY KEY,
+                purchased_at TEXT NOT NULL
+            )
+        """)
 
         c.execute("SELECT COUNT(*) FROM categories WHERE is_default = 1")
         if c.fetchone()[0] == 0:
@@ -199,6 +205,22 @@ def get_stats(user_id: int, period: str):
                 (user_id,),
             )
         return [dict(r) for r in c.fetchall()]
+
+
+def is_pro(user_id: int) -> bool:
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM pro_users WHERE user_id = ?", (user_id,))
+        return c.fetchone() is not None
+
+
+def add_pro_user(user_id: int):
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR IGNORE INTO pro_users (user_id, purchased_at) VALUES (?, ?)",
+            (user_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
 
 
 def get_recent(user_id: int, limit: int = 10):
