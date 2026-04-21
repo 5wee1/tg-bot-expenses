@@ -72,14 +72,23 @@ async def safe_edit(message, text, **kwargs):
 
 @router.message(CommandStart())
 @router.message(Command("menu"))
-async def cmd_start(msg: Message, state: FSMContext):
+async def cmd_start(msg: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
     await state.clear()
-    await msg.answer(
+    # Delete old menu message and the /start command itself
+    for mid in [data.get("menu_msg_id"), msg.message_id]:
+        if mid:
+            try:
+                await bot.delete_message(msg.chat.id, mid)
+            except TelegramBadRequest:
+                pass
+    sent = await msg.answer(
         "Привет! Я бот для учёта расходов и доходов.\n\n"
         "Нажми кнопку, выбери тип операции, напиши <code>название сумма</code> "
         "(например <code>кофе 300</code>) и выбери категорию.",
         reply_markup=kb.main_menu(is_pro=db.is_pro(msg.from_user.id)),
     )
+    await state.update_data(menu_msg_id=sent.message_id)
 
 
 @router.message(Command("help"))
