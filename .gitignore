@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+expenses.db
+*.db-journal
+bot.log
+
+.env
